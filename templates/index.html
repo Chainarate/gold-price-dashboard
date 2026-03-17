@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gold 96.5% Price Comparison</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      display: flex;
+      justify-content: center;
+      padding: 40px 16px;
+      min-height: 100vh;
+    }
+
+    .container { width: 100%; max-width: 620px; }
+
+    h1 {
+      text-align: center;
+      font-size: 1.5rem;
+      color: #ffd700;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 24px;
+    }
+
+    /* ---- table ---- */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #16213e;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,.4);
+    }
+
+    thead th {
+      background: #0f3460;
+      color: #ffd700;
+      padding: 14px 18px;
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+
+    thead th:first-child { text-align: left; }
+    thead th:not(:first-child) { text-align: right; }
+
+    tbody td {
+      padding: 14px 18px;
+      font-size: 1.15rem;
+      font-variant-numeric: tabular-nums;
+      border-bottom: 1px solid #1a1a3e;
+      transition: background .3s;
+    }
+
+    tbody td:first-child {
+      font-weight: 600;
+      color: #ccc;
+      text-align: left;
+    }
+
+    tbody td:not(:first-child) { text-align: right; }
+
+    tbody tr:hover { background: #1a2740; }
+
+    /* highlight classes */
+    .max-bid  { color: #ff4d4d; font-weight: 700; }
+    .min-offer { color: #00e676; font-weight: 700; }
+
+    .error-cell { color: #666; font-style: italic; font-size: 0.9rem; }
+
+    /* ---- footer / status ---- */
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 14px;
+      font-size: 0.8rem;
+      color: #666;
+      padding: 0 4px;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #00e676;
+      margin-right: 6px;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: .3; }
+    }
+
+    /* ---- flash animation on value change ---- */
+    @keyframes flash {
+      0%   { background: rgba(255,215,0,.15); }
+      100% { background: transparent; }
+    }
+    .flash { animation: flash .8s ease-out; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Gold 96.5% — Price Comparison</h1>
+    <p class="subtitle">Real-time prices from 4 Thai brokers (updates every 12 s)</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Broker</th>
+          <th>Bid (Sell)</th>
+          <th>Offer (Buy)</th>
+        </tr>
+      </thead>
+      <tbody id="price-body">
+        <tr><td colspan="3" style="text-align:center;color:#888;">Loading...</td></tr>
+      </tbody>
+    </table>
+
+    <div class="status-bar">
+      <span><span class="dot"></span>Live</span>
+      <span id="updated">—</span>
+    </div>
+  </div>
+
+  <script>
+    const POLL_MS = 12_000;
+    const tbody  = document.getElementById("price-body");
+    const updEl  = document.getElementById("updated");
+    let   prev   = {};          // track previous values for flash
+
+    function fmt(n) {
+      return n.toLocaleString("en-US");
+    }
+
+    async function refresh() {
+      try {
+        const res  = await fetch("/api/gold-prices");
+        const json = await res.json();
+        render(json.prices, json.updated);
+      } catch (err) {
+        console.error("Fetch error:", err);
+      }
+    }
+
+    function render(prices, updated) {
+      // Compute max bid & min offer (ignoring nulls)
+      const bids   = prices.filter(p => p.bid   !== null).map(p => p.bid);
+      const offers = prices.filter(p => p.offer !== null).map(p => p.offer);
+      const maxBid   = bids.length   ? Math.max(...bids)   : null;
+      const minOffer = offers.length ? Math.min(...offers) : null;
+
+      let html = "";
+      for (const p of prices) {
+        const bidChanged   = prev[p.name + "_bid"]   !== undefined && prev[p.name + "_bid"]   !== p.bid;
+        const offerChanged = prev[p.name + "_offer"] !== undefined && prev[p.name + "_offer"] !== p.offer;
+
+        html += "<tr>";
+        html += `<td>${p.name}</td>`;
+
+        if (p.bid === null) {
+          html += `<td class="error-cell">N/A</td>`;
+        } else {
+          const cls = (p.bid === maxBid ? " max-bid" : "") + (bidChanged ? " flash" : "");
+          html += `<td class="${cls.trim()}">${fmt(p.bid)}</td>`;
+        }
+
+        if (p.offer === null) {
+          html += `<td class="error-cell">N/A</td>`;
+        } else {
+          const cls = (p.offer === minOffer ? " min-offer" : "") + (offerChanged ? " flash" : "");
+          html += `<td class="${cls.trim()}">${fmt(p.offer)}</td>`;
+        }
+
+        html += "</tr>";
+
+        // save for next diff
+        prev[p.name + "_bid"]   = p.bid;
+        prev[p.name + "_offer"] = p.offer;
+      }
+
+      tbody.innerHTML = html;
+      updEl.textContent = "Updated: " + updated;
+    }
+
+    // initial + polling
+    refresh();
+    setInterval(refresh, POLL_MS);
+  </script>
+</body>
+</html>
